@@ -51,6 +51,53 @@ function getRiskProfile(userMessage) {
   return 2; // default moderate
 }
 
+function calculateRequiredYears(target, monthlyInvestment, annualReturn = 0.10) {
+  // FV = P * [((1 + r)^n - 1) / r] * (1 + r)
+  // Solve for n (years)
+  let r = annualReturn;
+  let P = monthlyInvestment;
+  let FV = target;
+  let n = 1;
+  while (P * ((Math.pow(1 + r, n) - 1) / r) * (1 + r) < FV && n < 100) {
+    n++;
+  }
+  return n;
+}
+
+function calculateSIP(goal, years, annualRate) {
+  const r = annualRate / 12;
+  const n = years * 12;
+  const factor = (Math.pow(1 + r, n) - 1) / r * (1 + r);
+  return Math.round(goal / factor);
+}
+
+const monthlyInvestment = calculateSIP(25000000, 20, 0.12);
+console.log(monthlyInvestment); // ~25116
+
+function validateRetirementPlan(plan) {
+  // Find the retirement goal (case-insensitive)
+  const goal = plan.goals.find(g => g.name && g.name.toLowerCase().includes('retire'));
+  
+  // If the retirement target is suspiciously low, scale it up (e.g., lakh → crore)
+  if (goal && goal.target_amount < 10000000) {
+    goal.target_amount *= 10;
+  }
+
+  // Normalize portfolio allocation if values are in decimals (e.g., 0.2 instead of 20)
+  if (Object.values(plan.portfolio_allocation).some(v => v <= 1)) {
+    for (let key in plan.portfolio_allocation) {
+      plan.portfolio_allocation[key] = Math.round(plan.portfolio_allocation[key] * 100);
+    }
+  }
+
+  // Optionally remove 'emergency' from allocation if it's not part of the main portfolio
+  if (plan.portfolio_allocation.emergency > 0) {
+    delete plan.portfolio_allocation.emergency;
+  }
+
+  return plan;
+}
+
 // POST /api/chat endpoint
 app.post('/api/chat', async (req, res) => {
   const userMessage = req.body.message;
@@ -91,6 +138,7 @@ First, provide a brief, user-friendly summary of the financial plan in plain Eng
 }
 
 If any field is missing or approximate, use reasonable estimates based on typical financial logic.
+If the user's current savings and investment capacity are not sufficient to achieve a goal in the requested time, recommend a more realistic duration required to reach the target amount, assuming an 8–12% annual return. Clearly state the adjusted duration in the JSON output.
             `
           },
           {
@@ -128,6 +176,45 @@ If any field is missing or approximate, use reasonable estimates based on typica
     } else {
       summary = aiReply.trim();
     }
+
+    // Assume you have already parsed plan, and extracted income/expenses from the user message if possible
+    let income, expenses;
+
+    // Try to extract monthly income and expenses from the user message
+    const incomeMatch = userMessage.match(/income[^\\d]*(\\d+[\\d,]*)[^\\d]*(per year|annually|a year)/i);
+    const expensesMatch = userMessage.match(/expenses[^\\d]*(\\d+[\\d,]*)[^\\d]*(per year|annually|a year)/i);
+    if (incomeMatch) income = Math.round(parseInt(incomeMatch[1].replace(/,/g, '')) / 12);
+    if (expensesMatch) expenses = Math.round(parseInt(expensesMatch[1].replace(/,/g, '')) / 12);
+
+    // Validate and correct the plan
+    if (plan && typeof income === 'number' && typeof expenses === 'number') {
+      if (plan.monthly_savings !== income - expenses) {
+        plan.monthly_savings = income - expenses;
+      }
+      if (plan.monthly_recommended_investment > plan.monthly_savings) {
+        plan.monthly_recommended_investment = plan.monthly_savings;
+      }
+      if (
+        plan &&
+        plan.goals &&
+        plan.goals.length > 0 &&
+        plan.monthly_recommended_investment &&
+        plan.goals[0].target_amount &&
+        plan.goals[0].duration_years
+      ) {
+        const requiredYears = calculateRequiredYears(
+          plan.goals[0].target_amount,
+          plan.monthly_recommended_investment
+        );
+        if (requiredYears > plan.goals[0].duration_years) {
+          plan.goals[0].duration_years = requiredYears;
+          summary += `\nNote: To achieve your goal of ₹${plan.goals[0].target_amount}, you may need approximately ${requiredYears} years with your current investment capacity.`;
+        }
+      }
+    }
+
+    plan = validateRetirementPlan(plan);
+
     res.json({ summary, plan });
   } catch (error) {
     console.error('OpenRouter API error:', error.response?.data || error.message);
