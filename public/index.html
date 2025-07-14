@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Personalized Financial Advisor</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6fa;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .container {
+      background: #fff;
+      margin-top: 40px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      width: 100%;
+      max-width: 420px;
+      padding: 24px 20px 16px 20px;
+      display: flex;
+      flex-direction: column;
+    }
+    h2 {
+      text-align: center;
+      color: #2a3a5e;
+      margin-bottom: 18px;
+    }
+    #chat {
+      min-height: 220px;
+      max-height: 320px;
+      overflow-y: auto;
+      margin-bottom: 18px;
+      padding: 8px;
+      background: #f8fafc;
+      border-radius: 6px;
+      border: 1px solid #e3e7ef;
+      font-size: 15px;
+    }
+    .msg {
+      margin-bottom: 10px;
+      line-height: 1.5;
+    }
+    .user {
+      color: #1a73e8;
+      font-weight: bold;
+    }
+    .bot {
+      color: #2a3a5e;
+    }
+    form {
+      display: flex;
+      gap: 8px;
+    }
+    input[type="text"] {
+      flex: 1;
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #bfc9da;
+      font-size: 15px;
+    }
+    button {
+      padding: 10px 18px;
+      background: #1a73e8;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #155ab6;
+    }
+    .plan {
+      background: #eaf6ff;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-top: 8px;
+      font-size: 14px;
+      color: #1a3a5e;
+      word-break: break-word;
+    }
+    .error {
+      color: #d32f2f;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Personalized Financial Advisor</h2>
+    <div id="chat"></div>
+    <form id="chatForm">
+      <input type="text" id="message" placeholder="Type your financial goals..." autocomplete="off" required />
+      <button type="submit">Send</button>
+    </form>
+    <div id="error" class="error"></div>
+  </div>
+  <script>
+    const chat = document.getElementById('chat');
+    const chatForm = document.getElementById('chatForm');
+    const messageInput = document.getElementById('message');
+    const errorDiv = document.getElementById('error');
+
+    function appendMessage(sender, text, isPlan = false) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + (sender === 'You' ? 'user' : 'bot');
+      if (isPlan) {
+        div.className += ' plan';
+        div.textContent = text;
+      } else {
+        div.innerHTML = `<strong>${sender}:</strong> ${text}`;
+      }
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    chatForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorDiv.textContent = '';
+      const userMsg = messageInput.value.trim();
+      if (!userMsg) return;
+      appendMessage('You', userMsg);
+      messageInput.value = '';
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: userMsg })
+        });
+        if (!res.ok) throw new Error('Server error');
+        const data = await res.json();
+        // Format plan nicely
+        if (data.monthly_savings !== undefined) {
+          appendMessage('Advisor', formatPlan(data), true);
+        } else if (data.aiReply) {
+          appendMessage('Advisor', data.aiReply);
+        } else {
+          appendMessage('Advisor', 'Sorry, I could not generate a plan.');
+        }
+      } catch (err) {
+        errorDiv.textContent = 'Error: ' + err.message;
+      }
+    });
+
+    function formatPlan(plan) {
+      let str = `Monthly Savings: ₹${plan.monthly_savings}\nRecommended Investment: ₹${plan.recommended_investment}\nPortfolio Allocation:`;
+      for (const [k, v] of Object.entries(plan.portfolio_allocation)) {
+        str += `\n  - ${capitalize(k)}: ${v}%`;
+      }
+      if (plan.goals && plan.goals.length) {
+        str += `\nGoals:`;
+        plan.goals.forEach(g => {
+          str += `\n  - ${g.name}: ₹${g.target_amount} in ${g.duration_years} years`;
+        });
+      }
+      return str;
+    }
+    function capitalize(s) {
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+  </script>
+</body>
+</html>
