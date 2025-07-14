@@ -70,16 +70,7 @@ app.post('/api/chat', async (req, res) => {
             content: `
 You are an intelligent financial planning assistant.
 
-Your task is to:
-1. Extract financial details from the user's message (income, expenses, risk profile, goals).
-2. Estimate monthly savings as income - expenses.
-3. Calculate the recommended monthly investment required to meet each goal, assuming an 8–12% annual return depending on the risk profile.
-4. Assign a portfolio allocation based on risk level:
-   - Low risk: equity 10–25%, debt 50–60%, gold 5–10%, emergency 10–20%
-   - Moderate risk: equity 40–60%, debt 20–30%, gold 10%, emergency 10–20%
-   - High risk: equity 70–80%, debt 10–20%, gold 5–10%, emergency 5–10%
-
-Return ONLY a valid JSON object in this exact format — with no explanation, no markdown, and no extra characters:
+First, provide a brief, user-friendly summary of the financial plan in plain English, highlighting key recommendations (monthly savings, investment, portfolio allocation, and goals). Then, return ONLY a valid JSON object in this format (no markdown):
 
 {
   "monthly_savings": 0,
@@ -100,18 +91,18 @@ Return ONLY a valid JSON object in this exact format — with no explanation, no
 }
 
 If any field is missing or approximate, use reasonable estimates based on typical financial logic.
-`
+            `
           },
           {
             role: 'user',
             content: userMessage
           }
         ],
-        max_tokens: 512
+        max_tokens: 700
       },
       {
         headers: {
-          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`, //use openrouter api key
+          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
           'Content-Type': 'application/json'
         }
       }
@@ -119,19 +110,25 @@ If any field is missing or approximate, use reasonable estimates based on typica
 
     // Extract the model's reply
     const aiReply = openRouterResponse.data.choices[0].message.content;
-    let plan;
-    try {
-      let jsonString = aiReply.trim();
+    // Split summary and JSON
+    let summary = '';
+    let plan = null;
+    const jsonStart = aiReply.indexOf('{');
+    if (jsonStart !== -1) {
+      summary = aiReply.slice(0, jsonStart).trim();
+      let jsonString = aiReply.slice(jsonStart).trim();
       if (jsonString.startsWith('```')) {
-        jsonString = jsonString.replace(/```[a-z]*\\n?/gi, '').replace(/```$/, '').trim();
+        jsonString = jsonString.replace(/```[a-z]*\n?/gi, '').replace(/```$/, '').trim();
       }
-      plan = JSON.parse(jsonString);
-      res.json(plan);
-    } catch (e) {
-      // If AI does not return valid JSON, return an error
-      res.status(500).json({ error: "AI did not return a valid structured plan." });
-      return;
+      try {
+        plan = JSON.parse(jsonString);
+      } catch (e) {
+        return res.status(500).json({ error: "AI did not return a valid structured plan.", summary });
+      }
+    } else {
+      summary = aiReply.trim();
     }
+    res.json({ summary, plan });
   } catch (error) {
     console.error('OpenRouter API error:', error.response?.data || error.message);
     res.status(500).json({ error: 'Failed to process request.' });
