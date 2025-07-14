@@ -111,7 +111,7 @@ If any field is missing or approximate, use reasonable estimates based on typica
       },
       {
         headers: {
-          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`, //use openrouter api key
           'Content-Type': 'application/json'
         }
       }
