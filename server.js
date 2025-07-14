@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -110,7 +111,7 @@ If any field is missing or approximate, use reasonable estimates based on typica
       },
       {
         headers: {
-          'Authorization': `Bearer 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`,
+          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
           'Content-Type': 'application/json'
         }
       }
